@@ -57,7 +57,7 @@ tokens = [
     'RPAREN',
     'SEMI',
     'SET',
-    'STRING', # Keep STRING in the tokens list [cite: 1]
+    'STRING', 
     'STRING_LITERAL',
     'THEN',
     'TIMES',
