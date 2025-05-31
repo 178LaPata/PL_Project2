@@ -108,7 +108,6 @@ def t_STRING_LITERAL(t):
     t.value = t.value[1:-1].replace("''", "'")
     return t
 
-# Add this back for the 'STRING' keyword
 def t_STRING(t):
     r'\bstring\b'
     t.type = 'STRING'
