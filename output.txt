@@ -1,8 +1,4 @@
-pushi 0
-pushi 0
-pushi 0
-pushi 0
-pushi 0
+pushn 4
 start
 pushi 0
 storeg 2
@@ -13,26 +9,36 @@ pushi 1
 storeg 1
 pushi 5
 storeg 3
-forloop4
+forloop1
 pushg 1
 pushg 3
 infeq
-jz forend4
+jz forend1
+pushgp
+pushi 0
+add
+pushg 1
+pushi 1
+sub
 read
 atoi
-pushg 1
-store_array_element 0
+storen
 pushg 2
+pushgp
+pushi 0
+add
 pushg 1
-load_array_element 0
+pushi 1
+sub
+loadn
 add
 storeg 2
 pushg 1
 pushi 1
 add
 storeg 1
-jump forloop4
-forend4
+jump forloop1
+forend1
 pushs "A soma dos números é: "
 writes
 pushg 2
