@@ -1,48 +1,48 @@
-pushn 4
+pushn 8
 start
 pushi 0
-storeg 2
+storeg 6
 pushs "Introduza 5 números inteiros:"
 writes
-WRITELN
+writeln
 pushi 1
-storeg 1
+storeg 5
 pushi 5
-storeg 3
-forloop1
-pushg 1
-pushg 3
+storeg 7
+forloop1:
+pushg 5
+pushg 7
 infeq
 jz forend1
 pushgp
 pushi 0
-add
-pushg 1
+padd
+pushg 5
 pushi 1
 sub
 read
 atoi
 storen
-pushg 2
+pushg 6
 pushgp
 pushi 0
-add
-pushg 1
+padd
+pushg 5
 pushi 1
 sub
 loadn
 add
-storeg 2
-pushg 1
+storeg 6
+pushg 5
 pushi 1
 add
-storeg 1
+storeg 5
 jump forloop1
-forend1
+forend1:
 pushs "A soma dos números é: "
 writes
-pushg 2
+pushg 6
 writei
-WRITELN
+writeln
 
 stop
