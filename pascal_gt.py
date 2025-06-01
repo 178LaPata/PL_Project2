@@ -114,51 +114,64 @@ def p_variable(p):
     """variable : ID
                 | ID LBRACKET expression RBRACKET"""
     global parser_success, parser_var, parser_var_types
-    if len(p) == 2: 
+    if len(p) == 2:
         var_name = p[1]
         if var_name not in parser_var:
             print(f"Erro: Variável '{var_name}' não declarada.")
             parser_success = False
             p[0] = {'type': 'error', 'name': var_name, 'basetype': 'unknown'}
         else:
-            p[0] = {'type': 'simple', 
-                    'name': var_name, 
+            p[0] = {'type': 'simple',
+                    'name': var_name,
                     'basetype': parser_var_types.get(var_name, 'unknown')}
     else:  
-        array_name = p[1]
-        index_expr_code, index_expr_type = p[3] 
+        var_name = p[1]
+        index_expr_code, index_expr_type = p[3]
 
-        if array_name not in parser_var:
-            print(f"Erro: Array '{array_name}' não declarado.")
+        if index_expr_type != 'integer':
+            print(f"Erro: Índice para '{var_name}' deve ser um inteiro, mas foi {index_expr_type}.")
             parser_success = False
-            p[0] = {'type': 'error', 'name': array_name, 'basetype': 'unknown'}
-        else:
-            array_type_full_str = parser_var_types.get(array_name)
-            element_basetype = 'unknown' 
-            low_bound = 1 
-            
-            if isinstance(array_type_full_str, str) and array_type_full_str.startswith("array[") and "_of_" in array_type_full_str:
-                element_basetype = array_type_full_str.split("_of_")[-1]
-                try:
-                    range_part = array_type_full_str.split('[')[1].split(']')[0] 
-                    low_bound_str = range_part.split('..')[0]
-                    low_bound = int(low_bound_str)
-                except (IndexError, ValueError):
-                    print(f"Aviso: Formato de tipo array inválido ou não foi possível extrair limite inferior de '{array_type_full_str}' para '{array_name}'. Assumindo 1.")
-            elif not (isinstance(array_type_full_str, str) and array_type_full_str.startswith("array")):
-                 print(f"Erro: Variável '{array_name}' não é um array.")
-                 parser_success = False
-                 p[0] = {'type': 'error', 'name': array_name, 'basetype': 'unknown'}
-                 return
+            p[0] = {'type': 'error', 'name': var_name, 'basetype': 'unknown'}
+            return
+
+        if var_name not in parser_var:
+            print(f"Erro: Variável '{var_name}' não declarada.")
+            parser_success = False
+            p[0] = {'type': 'error', 'name': var_name, 'basetype': 'unknown'}
+            return
+
+        var_actual_type = parser_var_types.get(var_name)
+
+        if isinstance(var_actual_type, str) and var_actual_type.startswith("array[") and "_of_" in var_actual_type:
+            element_basetype = var_actual_type.split("_of_")[-1]
+            low_bound_val = 1 
+            try:
+                range_part = var_actual_type.split('[')[1].split(']')[0]
+                low_bound_str = range_part.split('..')[0]
+                low_bound_val = int(low_bound_str)
+            except (IndexError, ValueError):
+                print(f"Aviso: Formato de tipo array inválido ou não foi possível extrair limite inferior de '{var_actual_type}' para '{var_name}'. Assumindo 1.")
             
             p[0] = {
-                'type': 'indexed',
-                'name': array_name, 
-                'index_code': index_expr_code, 
-                'basetype': element_basetype,
-                'low_bound': low_bound 
+                'type': 'indexed_array', 
+                'name': var_name,
+                'index_code': index_expr_code,
+                'basetype': element_basetype, 
+                'low_bound': low_bound_val
             }
-
+        elif var_actual_type == "string":
+            p[0] = {
+                'type': 'indexed_string_char',
+                'name': var_name,
+                'index_code': index_expr_code,
+                'basetype': 'char' 
+            }
+        else:
+            print(f"Erro: Variável '{var_name}' do tipo '{var_actual_type}' não pode ser indexada (não é array nem string).")
+            parser_success = False
+            p[0] = {'type': 'error', 'name': var_name, 'basetype': 'unknown'}
+            return
+        
 def p_functions(p):
     """functions : function functions
                  | empty"""
@@ -196,10 +209,32 @@ def p_argument_list_multiple(p):
 
 
 def p_expression_function_call(p):
-    "expression : ID LPAREN argument_list RPAREN"
-    fname = p[1]
-    args_code = p[3] 
-    p[0] = (args_code + f"pusha {fname}\ncall\n", "integer")
+    """expression : ID LPAREN argument_list RPAREN
+                  | ID LPAREN RPAREN""" 
+    global parser_success, parser_functions 
+    
+    fname = p[1].lower() 
+    
+    if len(p) == 5: 
+        args_code = p[3] 
+    else: 
+        args_code = ""
+
+    if fname == "length":
+        if not args_code:
+            print(f"Erro: Função 'length' requer um argumento string.")
+            parser_success = False
+            p[0] = ("", "integer")
+            return
+        p[0] = (args_code + "STRLEN\n", "integer")
+    else:
+        if fname not in parser_functions:
+            print(f"Erro: Função '{p[1]}' não declarada.")
+            parser_success = False
+            p[0] = ("", "integer")
+            return
+        
+        p[0] = (args_code + f"pusha {fname}\ncall\n", "integer")
 
 def p_statements(p):
     """statements : statement_sequence""" 
@@ -290,23 +325,24 @@ def p_writelist(p):
                  | writeitem"""
     p[0] = p[1] + p[3] if len(p) == 4 else p[1]
 
-def p_writeitem_string(p):
-    """writeitem : STRING_LITERAL"""
-    p[0] = f'pushs "{p[1]}"\nwrites\n'
-
 def p_writeitem_expr(p):
     """writeitem : expression"""
-    code, expr_type = p[1] 
-    if expr_type == "real":
-        p[0] = code + "writef\n" 
+    code, expr_type = p[1]
+    if expr_type == "string": 
+        p[0] = code + "writes\n"
+    elif expr_type == "real":
+        p[0] = code + "writef\n"
     elif expr_type == "boolean": 
-        p[0] = code + "writei\n" 
-    else: 
+        p[0] = code + "writei\n"
+    elif expr_type == "integer": 
+        p[0] = code + "writei\n"
+    else:
+        print(f"Aviso: Tipo de expressão desconhecido '{expr_type}' em p_writeitem_expr. Usando writei por defeito.")
         p[0] = code + "writei\n" 
 
 def p_readln_statement(p):
     """readln_statement : READLN LPAREN variable RPAREN"""
-    global parser_success, parser_var
+    global parser_success, parser_var, parser_var_types 
     var_info = p[3]
 
     if var_info.get('type') == 'error':
@@ -315,74 +351,115 @@ def p_readln_statement(p):
         return
 
     addr_calc_code = ""
-    if var_info['type'] == 'indexed':
+    is_indexed = False
+    if var_info['type'] == 'indexed_array':
+        is_indexed = True
         array_name = var_info['name']
-        index_code = var_info['index_code']
+        index_code_for_addr = var_info.get('index_code', "")
         array_slot = parser_var[array_name]
         low_bound = var_info.get('low_bound', 1)
 
         addr_calc_code += "pushgp\n"                     
         addr_calc_code += f"pushi {array_slot}\n"       
         addr_calc_code += "padd\n"                      
-        
-        addr_calc_code += index_code                    
+        addr_calc_code += index_code_for_addr 
         addr_calc_code += f"pushi {low_bound}\n"        
-        addr_calc_code += "sub\n"                       
-    
-    read_value_code = "read\n" 
-    if var_info.get('basetype') == 'real':
-        read_value_code += "atof\n" 
-    else: 
-        read_value_code += "atoi\n" 
+        addr_calc_code += "sub\n" 
 
-    if var_info['type'] == 'simple':
-        var_name = var_info['name']
-        p[0] = read_value_code + f"storeg {parser_var[var_name]}\n"
-    elif var_info['type'] == 'indexed':
-        p[0] = addr_calc_code + read_value_code + "storen\n"
+    base_read_code = "read\n" 
+    conversion_code = ""
+    actual_target_type = var_info.get('basetype') 
+
+    if actual_target_type == 'real':
+        conversion_code = "atof\n" 
+    elif actual_target_type == 'integer' or actual_target_type == 'boolean': 
+        conversion_code = "atoi\n" 
+    elif actual_target_type == 'string':
+        conversion_code = "" 
     else:
+        print(f"Erro: Tipo de variável desconhecido ou não suportado '{actual_target_type}' para READLN.")
+        parser_success = False
+        p[0] = ""
+        return
+
+    full_read_and_convert_code = base_read_code + conversion_code
+
+    if not is_indexed and var_info['type'] == 'simple':
+        var_name = var_info['name']
+        if var_name not in parser_var:
+            print(f"Erro: Variável '{var_name}' não declarada para READLN.")
+            parser_success = False
+            p[0] = ""
+            return
+        p[0] = full_read_and_convert_code + f"storeg {parser_var[var_name]}\n"
+    elif is_indexed:
+        p[0] = addr_calc_code + full_read_and_convert_code + "storen\n" 
+    else:
+        print(f"Erro: Tipo de variável não suportado '{var_info['type']}' para atribuição em READLN.")
+        parser_success = False
         p[0] = ""
 
 def p_for_statement(p):
-    """for_statement : FOR ID ASSIGN expression TO expression DO statement"""
+    """for_statement : FOR ID ASSIGN expression TO expression DO statement
+                     | FOR ID ASSIGN expression DOWNTO expression DO statement""" 
     global parser_success, parser_var_count, parser_var
+    
     loop_var_name = p[2]
     if loop_var_name not in parser_var:
-        print(f"Erro: variável de ciclo '{loop_var_name}' não declarada")
+        print(f"Erro: variável de ciclo '{loop_var_name}' não declarada.")
         parser_success = False
         p[0] = ""
-    else:
-        loop_var_slot = parser_var[loop_var_name]
-        
-        limit_storage_slot = parser_var_count 
-        parser_var_count +=1 
+        return
 
-        init_expr_code, _ = p[4] 
-        limit_expr_code, _ = p[6] 
-        body_code = p[8] 
+    loop_var_slot = parser_var[loop_var_name]
+    
+    limit_storage_slot = parser_var_count 
+    parser_var_count += 1 
+
+    init_expr_code, init_expr_type = p[4] 
+    limit_expr_code, limit_expr_type = p[6] 
+    body_code = p[8] 
+
+
+    label_num = generate_unique_label_num()
+    loop_label = f"forloop{label_num}"
+    end_label = f"forend{label_num}"
+    
+    direction_token_type = p.slice[5].type 
+
+    comparison_instruction = ""
+    step_instruction = ""
+
+    if direction_token_type == 'TO':
+        comparison_instruction = "infeq"  
+        step_instruction = "add"         
+    elif direction_token_type == 'DOWNTO':
+        comparison_instruction = "supeq" 
+        step_instruction = "sub"        
+    else:
+        print(f"Erro interno: token de direção desconhecido '{direction_token_type}' no loop FOR.")
+        parser_success = False
+        p[0] = ""
+        return
         
-        label_num = generate_unique_label_num()
-        loop_label = f"forloop{label_num}"
-        end_label = f"forend{label_num}"
-        
-        p[0] = (
-            init_expr_code +                            
-            f"storeg {loop_var_slot}\n" +               
-            limit_expr_code +                           
-            f"storeg {limit_storage_slot}\n" +          
-            f"{loop_label}:\n" +                         
-            f"pushg {loop_var_slot}\n" +                
-            f"pushg {limit_storage_slot}\n" +           
-            "infeq\n" +                                 
-            f"jz {end_label}\n" +                       
-            body_code +                                 
-            f"pushg {loop_var_slot}\n" +                
-            "pushi 1\n" +                               
-            "add\n" +                                   
-            f"storeg {loop_var_slot}\n" +               
-            f"jump {loop_label}\n" +                    
-            f"{end_label}:\n"                           
-        )
+    p[0] = (
+        init_expr_code +                            
+        f"storeg {loop_var_slot}\n" +               
+        limit_expr_code +                           
+        f"storeg {limit_storage_slot}\n" +     
+        f"{loop_label}:\n" +                        
+        f"pushg {loop_var_slot}\n" +                
+        f"pushg {limit_storage_slot}\n" +          
+        f"{comparison_instruction}\n" +            
+        f"jz {end_label}\n" +                      
+        body_code +                                
+        f"pushg {loop_var_slot}\n" +               
+        "pushi 1\n" +                              
+        f"{step_instruction}\n" +                  
+        f"storeg {loop_var_slot}\n" +              
+        f"jump {loop_label}\n" +                   
+        f"{end_label}:\n"                          
+    )
 
 def p_expression_boolean(p):
     """expression : TRUE
@@ -404,34 +481,80 @@ def p_expression_relop(p):
                   | expression GE expression
                   | expression EQ expression
                   | expression NEQ expression"""
+    global parser_success 
+    
     op_map_int = { '<': 'inf', '<=': 'infeq', '>': 'sup', '>=': 'supeq', '=': 'equal'}
     op_map_float = { '<': 'finf', '<=': 'finfeq', '>': 'fsup', '>=': 'fsupeq', '=': 'equal'}
     
     left_code, left_type = p[1]
     right_code, right_type = p[3]
+    operator_symbol = p[2]
     
-    final_code = ""
+    final_code_parts = []
     op_instruction = ""
+    result_type = "boolean"
 
-    if p[2] == '<>':
+    if (left_type == "integer" and right_type == "string") or \
+       (left_type == "string" and right_type == "integer"):
+        
+        int_expr_code = ""
+        str_expr_code = ""
+
+        if left_type == "integer":
+            int_expr_code = left_code
+            str_expr_code = right_code 
+        else:
+            int_expr_code = right_code
+            str_expr_code = left_code  
+
+        final_code_parts.append(int_expr_code)
+        final_code_parts.append(str_expr_code)
+        final_code_parts.append("CHRCODE\n") 
+
+        if operator_symbol == '=':
+            op_instruction = "equal\n"
+        elif operator_symbol == '<>':
+            op_instruction = "equal\nnot\n"
+        else:
+            print(f"Erro: Comparação relacional '{operator_symbol}' entre um char (integer) e uma string não é suportada. Apenas '=' e '<>'.")
+            parser_success = False
+            p[0] = ("", result_type)
+            return
+        
+        final_code_parts.append(op_instruction)
+        p[0] = ("".join(final_code_parts), result_type)
+        return
+
+    if operator_symbol == '<>':
         if left_type == "real" or right_type == "real":
             final_left = left_code + ("itof\n" if left_type == "integer" else "")
             final_right = right_code + ("itof\n" if right_type == "integer" else "")
-            p[0] = (final_left + final_right + "equal\nnot\n", "boolean")
-        else:
-            p[0] = (left_code + right_code + "equal\nnot\n", "boolean")
+            p[0] = (final_left + final_right + "equal\nnot\n", result_type)
+        else: 
+            p[0] = (left_code + right_code + "equal\nnot\n", result_type)
         return
 
     if left_type == "real" or right_type == "real":
         final_left_code = left_code + ("itof\n" if left_type == "integer" else "")
         final_right_code = right_code + ("itof\n" if right_type == "integer" else "")
-        final_code = final_left_code + final_right_code
-        op_instruction = op_map_float.get(p[2], op_map_int.get(p[2])) 
-    else:
-        final_code = left_code + right_code
-        op_instruction = op_map_int.get(p[2])
+        final_code_parts.append(final_left_code)
+        final_code_parts.append(final_right_code)
+        op_instruction = op_map_float.get(operator_symbol)
+        if not op_instruction and operator_symbol == '=': 
+            op_instruction = op_map_int.get(operator_symbol) 
+    else: 
+        final_code_parts.append(left_code)
+        final_code_parts.append(right_code)
+        op_instruction = op_map_int.get(operator_symbol)
             
-    p[0] = (final_code + op_instruction + "\n", "boolean")
+    if not op_instruction:
+        print(f"Erro: Operador relacional '{operator_symbol}' não suportado para os tipos {left_type} e {right_type}.")
+        parser_success = False
+        p[0] = ("", result_type)
+        return
+        
+    final_code_parts.append(op_instruction + "\n")
+    p[0] = ("".join(final_code_parts), result_type)
 
 
 def p_expression_paren(p):
@@ -541,42 +664,67 @@ def p_expression_binop(p):
 
     p[0] = (final_left_code + final_right_code + op_code + "\n", result_type)
 
-
-def p_expression_from_variable(p): 
+def p_expression_from_variable(p):
     """expression : variable"""
     var_info = p[1]
-    
+
     if var_info.get('type') == 'error':
         p[0] = ("", "integer") 
         return
 
     if var_info['type'] == 'simple':
         var_name = var_info['name']
-        if var_name not in parser_var: 
-            p[0] = ("", "integer") 
-        else:
-            basetype_str = var_info.get('basetype', "integer") 
-            p[0] = (f"pushg {parser_var[var_name]}\n", basetype_str)
-    
-    elif var_info['type'] == 'indexed':
+        if var_name not in parser_var:
+            print(f"Erro: Variável '{var_name}' não declarada (em p_expression_from_variable).")
+            parser_success = False
+            p[0] = ("", "integer")
+            return
+        basetype_str = var_info.get('basetype', "integer")
+        p[0] = (f"pushg {parser_var[var_name]}\n", basetype_str)
+
+    elif var_info['type'] == 'indexed_array': 
         array_name = var_info['name']
-        index_code = var_info['index_code']
-        element_basetype = var_info.get('basetype', "integer") 
+        index_code = var_info['index_code'] 
+        element_basetype = var_info.get('basetype', "integer")
         array_slot = parser_var[array_name]
-        low_bound = var_info.get('low_bound', 1) 
-        
-        code = "pushgp\n"                             
-        code += f"pushi {array_slot}\n"             
-        code += "padd\n"                            
-        
-        code += index_code                          
-        code += f"pushi {low_bound}\n"              
-        code += "sub\n"                             
-                                                    
-        code += "loadn\n"                           
+        low_bound = var_info.get('low_bound', 1)
+
+        code = "pushgp\n"
+        code += f"pushi {array_slot}\n"
+        code += "padd\n"
+        code += index_code 
+        code += f"pushi {low_bound}\n"
+        code += "sub\n" 
+        code += "loadn\n" 
         p[0] = (code, element_basetype)
+
+    elif var_info['type'] == 'indexed_string_char':
+        string_var_name = var_info['name']
+        index_code = var_info['index_code'] 
+
+        if string_var_name not in parser_var:
+            print(f"Erro: Variável string '{string_var_name}' não encontrada.")
+            parser_success = False
+            p[0] = ("", "integer") 
+            return
+
+        string_slot = parser_var[string_var_name]
+        gvm_code = f"pushg {string_slot}\n"  
+        gvm_code += index_code             
+        gvm_code += "pushi 1\nsub\n"        
+        gvm_code += "CHARAT\n"              
+        
+        p[0] = (gvm_code, "integer")
+
     else:
+        print(f"Erro: Tipo de variável desconhecido ou não suportado em p_expression_from_variable: {var_info.get('type')}")
+        parser_success = False
         p[0] = ("", "integer")
+
+def p_expression_from_literal_string(p):
+    """expression : STRING_LITERAL"""
+    val = p[1]
+    p[0] = (f"pushs \"{val}\"\n", "string")
 
 def p_expression_number(p): 
     "expression : NUMBER"

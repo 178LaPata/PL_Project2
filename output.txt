@@ -1,52 +1,51 @@
-pushn 4
+pushn 5
 start
-pushs "Introduza o primeiro número: \n"
+pushs "Introduza uma string binária:"
 writes
+writeln
 read
-atoi
 storeg 0
-pushs "Introduza o segundo número: \n"
-writes
-read
-atoi
-storeg 1
-pushs "Introduza o terceiro número: \n"
-writes
-read
-atoi
+pushi 0
 storeg 2
+pushi 1
+storeg 3
+pushg 0
+STRLEN
+storeg 1
+pushi 1
+storeg 4
+forloop2:
+pushg 1
+pushg 4
+supeq
+jz forend2
 pushg 0
 pushg 1
-sup
-jz ifelse3
-pushg 0
+pushi 1
+sub
+CHARAT
+pushs "1"
+CHRCODE
+equal
+jz ifend1
 pushg 2
-sup
-jz ifelse1
-pushg 0
-storeg 3
-jump ifend1
-ifelse1:
-pushg 2
-storeg 3
-ifend1:
-jump ifend3
-ifelse3:
-pushg 1
-pushg 2
-sup
-jz ifelse2
-pushg 1
-storeg 3
-jump ifend2
-ifelse2:
-pushg 2
-storeg 3
-ifend2:
-ifend3:
-pushs "O maior é: "
-writes
 pushg 3
+add
+storeg 2
+ifend1:
+pushg 3
+pushi 2
+mul
+storeg 3
+pushg 1
+pushi 1
+sub
+storeg 1
+jump forloop2
+forend2:
+pushs "O valor inteiro correspondente é: "
+writes
+pushg 2
 writei
 writeln
 
