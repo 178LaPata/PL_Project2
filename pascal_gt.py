@@ -601,7 +601,7 @@ def p_error(p):
 parser = yacc.yacc(debug=True)
 
 if __name__ == "__main__":
-    input_filename = 'input1.txt'
+    input_filename = 'inputs/input6.txt'
     if len(sys.argv) > 1:
         input_filename = sys.argv[1]
     
