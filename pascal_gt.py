@@ -482,7 +482,7 @@ def p_expression_relop(p):
                   | expression EQ expression
                   | expression NEQ expression"""
     global parser_success 
-    
+
     op_map_int = { '<': 'inf', '<=': 'infeq', '>': 'sup', '>=': 'supeq', '=': 'equal'}
     op_map_float = { '<': 'finf', '<=': 'finfeq', '>': 'fsup', '>=': 'fsupeq', '=': 'equal'}
     
@@ -749,7 +749,7 @@ def p_error(p):
 parser = yacc.yacc(debug=True)
 
 if __name__ == "__main__":
-    input_filename = 'inputs/input6.txt'
+    input_filename = 'inputs/input4.txt'
     if len(sys.argv) > 1:
         input_filename = sys.argv[1]
     
