@@ -13,8 +13,8 @@ parser_var_count = 0
 parser_var_types = {}
 
 precedence = (
-    ('nonassoc', 'ELSE'),
     ('nonassoc', 'IFX'),
+    ('nonassoc', 'ELSE'),
     ('left', 'OR'),
     ('left', 'AND'),
     ('nonassoc', 'EQ', 'NEQ', 'LT', 'LE', 'GT', 'GE'),
@@ -61,15 +61,20 @@ def p_var_declaration_list(p):
 
 # Regista variáveis e os seus tipos, verifica duplicações
 def p_var_declaration(p):
-    """var_declaration : id_list COLON type SEMI""" # Semicolon here is a terminator for var_declaration itself
+    """var_declaration : id_list COLON type SEMI"""
     global parser_var, parser_var_count, parser_success, parser_var_types
-    for var in p[1]:
-        if var in parser_var:
-            print(f"Erro: variável duplicada {var}")
+    type_representation = p[3]  # This now comes from the updated p_type
+
+    for var_name in p[1]: # p[1] is the id_list
+        if var_name in parser_var:
+            print(f"Erro: variável duplicada {var_name}")
             parser_success = False
         else:
-            parser_var[var] = parser_var_count
-            parser_var_types[var] = p[3].lower()
+            parser_var[var_name] = parser_var_count
+            # If type_representation is always a string (even for arrays), .lower() might be too simple.
+            # For "array[1..5]_of_integer", .lower() is fine.
+            # If you use a structured type for arrays, you'd store that structure directly.
+            parser_var_types[var_name] = type_representation # Store the direct representation
             parser_var_count += 1
     p[0] = ""
 
@@ -79,11 +84,44 @@ def p_id_list(p):
     p[0] = [p[1]] if len(p) == 2 else [p[1]] + p[3]
 
 def p_type(p):
-    """type : INTEGER
-            | BOOLEAN
-            | STRING
-            | REAL"""
-    p[0] = p[1]
+    """type : simple_type
+            | array_type"""
+    p[0] = p[1] # Pass the type representation (string or structured object) up
+
+def p_simple_type(p):
+    """simple_type : INTEGER
+                   | BOOLEAN
+                   | STRING
+                   | REAL"""
+    p[0] = p[1].lower() # Store simple types as lowercase strings e.g., "integer"
+
+def p_array_type(p):
+    """array_type : ARRAY LBRACKET index_range RBRACKET OF type"""
+    # p[1] = ARRAY token
+    # p[2] = LBRACKET token '['
+    # p[3] = index_range, which will be a tuple (low, high)
+    # p[4] = RBRACKET token ']'
+    # p[5] = OF token
+    # p[6] = type (this is the base type of the array, e.g., "integer")
+
+    low_bound, high_bound = p[3]
+    base_type = p[6] # This will be the string from the recursive call to p_type
+
+    # You can choose how to represent this array type.
+    # Option 1: A descriptive string (useful for simple storage)
+    p[0] = f"array[{low_bound}..{high_bound}]_of_{base_type}"
+
+    # Option 2: A structured representation (better for later semantic analysis/code generation)
+    # p[0] = {'kind': 'array', 'low': low_bound, 'high': high_bound, 'base_type': base_type}
+    # For now, the string representation is simpler to integrate with existing p_var_declaration.
+
+def p_index_range(p):
+    """index_range : NUMBER DOTDOT NUMBER"""
+    # p[1] = value of the first NUMBER token
+    # p[2] = DOTDOT token '..'
+    # p[3] = value of the second NUMBER token
+    p[0] = (p[1], p[3]) # Store range as a tuple (low, high)
+
 
 def p_functions(p):
     """functions : function functions
@@ -134,13 +172,8 @@ def p_expression_function_call(p):
 
 # --- MODIFIED STATEMENT HANDLING ---
 def p_statements(p):
-    """statements : statement_sequence
-                  | empty_statement_block""" # Allows BEGIN END
-    p[0] = "".join(p[1]) # p[1] is a list of statement codes
-
-def p_empty_statement_block(p):
-    'empty_statement_block : '
-    p[0] = [] # Represents an empty list of statements
+    """statements : statement_sequence""" # REMOVED: | empty_statement_block
+    p[0] = "".join(p[1]) # p[1] is a list of statement codes from statement_sequence
 
 def p_statement_sequence(p):
     """statement_sequence : statement
@@ -351,7 +384,7 @@ def p_if_statement(p):
     then_statement_code = p[4]
 
     if len(p) == 5:  # IF ... THEN ... (no ELSE)
-        label_end = f"ifend_{idx}"
+        label_end = f"ifend{idx}"
         p[0] = (
             cond_code +
             f"jz {label_end}\n" + # Jump to end if condition is false (0)
@@ -360,8 +393,8 @@ def p_if_statement(p):
         )
     else:  # IF ... THEN ... ELSE ... (len(p) == 7)
         else_statement_code = p[6]
-        label_else = f"ifelse_{idx}"
-        label_end = f"ifend_{idx}"
+        label_else = f"ifelse{idx}"
+        label_end = f"ifend{idx}"
         p[0] = (
             cond_code +
             f"jz {label_else}\n" + # Jump to else part if condition is false
@@ -381,8 +414,8 @@ def p_while_statement(p):
     cond_code, _ = p[2] if isinstance(p[2], tuple) else (p[2], "integer")
     body_code = p[4]
     
-    start_label = f"whilestart_{loop_idx}"
-    end_label = f"whileend_{loop_idx}"
+    start_label = f"whilestart{loop_idx}"
+    end_label = f"whileend{loop_idx}"
     
     p[0] = (
         f"{start_label}:\n" +       # Label for the start of the loop (condition check)
@@ -471,7 +504,7 @@ def p_error(p):
 parser = yacc.yacc(debug=True)
 
 # Leitura de código Pascal (Example usage, you might get this from an argument)
-with open('input.txt', 'r') as file:
+with open('input4.txt', 'r') as file:
     source = file.read()
 
 codigo = parser.parse(source)

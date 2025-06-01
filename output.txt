@@ -2,39 +2,38 @@ pushi 0
 pushi 0
 pushi 0
 pushi 0
+pushi 0
 start
-pushs "Introduza um número inteiro positivo:"
+pushi 0
+storeg 2
+pushs "Introduza 5 números inteiros:"
 writes
 WRITELN
-read
-atoi
-storeg 0
-pushi 1
-storeg 2
 pushi 1
 storeg 1
-pushg 0
+pushi 5
 storeg 3
-forloop1:
+forloop4
 pushg 1
 pushg 3
 infeq
-jz forend1
+jz forend4
+read
+atoi
+pushg 1
+store_array_element 0
 pushg 2
 pushg 1
-mul
+load_array_element 0
+add
 storeg 2
 pushg 1
 pushi 1
 add
 storeg 1
-jump forloop1
-forend1:
-pushs "Fatorial de "
-writes
-pushg 0
-writei
-pushs ": "
+jump forloop4
+forend4
+pushs "A soma dos números é: "
 writes
 pushg 2
 writei
