@@ -2,20 +2,26 @@ import sys
 import ply.yacc as yacc
 from pascal_lex import tokens
 
-parser = None
-parser_success = True
-parser_functions = {}
-parser_params = {}
-parser_var = {}
-parser_var_count = 0 
-parser_var_types = {}
-label_seq_num = 0 
+# ====== Variáveis globais ======
 
+# Variáveis para armazenar o estado do parser e informações sobre variáveis e funções
+parser_success = True
+parser_functions = {} # map de nomes de funções para seus códigos
+parser_params = {} 
+parser_var = {} # regista variáveis locais
+parser_var_count = 0 
+parser_var_types = {} # armazena os tipos de variáveis
+label_seq_num = 0 # contador de rótulos únicos para saltos
+
+# Função para gerar rótulos únicos para saltos
 def generate_unique_label_num():
     global label_seq_num
     label_seq_num += 1
     return label_seq_num
 
+# ====== Definição da gramática ======
+
+# Definição da precedência dos operadores
 precedence = (
     ('nonassoc', 'IFX'),    
     ('nonassoc', 'ELSE'),   
@@ -29,6 +35,7 @@ precedence = (
 
 start = 'program'
 
+# Corresponde à regra inicial do parser, ou seja, o programa completo
 def p_program(p):
     """program : PROGRAM ID SEMI declarations functions BEGIN statements END DOT"""
     functions_code_str = "\n".join(f_code for f_code in parser_functions.values() if f_code)
@@ -44,16 +51,19 @@ def p_program(p):
     
     p[0] = "\n".join(final_code) + "\n"
 
+# Definição das declarações de variáveis
 def p_declarations(p):
     """declarations : VAR var_declaration_list
                     | empty"""
     p[0] = p[2] if len(p) > 2 else ""
 
+# Definição da lista de declarações de variáveis
 def p_var_declaration_list(p):
     """var_declaration_list : var_declaration_list var_declaration
                             | var_declaration"""
     p[0] = p[1] + p[2] if len(p) == 3 else p[1]
 
+# Definição de uma declaração de variável
 def p_var_declaration(p):
     """var_declaration : id_list COLON type SEMI"""
     global parser_var, parser_var_count, parser_success, parser_var_types
@@ -83,16 +93,19 @@ def p_var_declaration(p):
             
     p[0] = ""
 
+# Definição da lista de identificadores
 def p_id_list(p):
     """id_list : ID
               | ID COMMA id_list"""
     p[0] = [p[1]] if len(p) == 2 else [p[1]] + p[3]
 
+# Definição do tipo de dados
 def p_type(p):
     """type : simple_type
             | array_type"""
     p[0] = p[1] 
 
+# Definição do tipo simples
 def p_simple_type(p):
     """simple_type : INTEGER
                    | BOOLEAN
@@ -100,16 +113,19 @@ def p_simple_type(p):
                    | REAL"""
     p[0] = p[1].lower() 
 
+# Definição do tipo de array
 def p_array_type(p):
     """array_type : ARRAY LBRACKET index_range RBRACKET OF type"""
     low_bound, high_bound = p[3]
     base_type = p[6] 
     p[0] = f"array[{low_bound}..{high_bound}]_of_{base_type}"
 
+# Definição do intervalo de índices para arrays
 def p_index_range(p):
     """index_range : NUMBER DOTDOT NUMBER"""
     p[0] = (p[1], p[3]) 
 
+# Definição da variável, que pode ser simples ou indexada
 def p_variable(p):
     """variable : ID
                 | ID LBRACKET expression RBRACKET"""
@@ -172,11 +188,13 @@ def p_variable(p):
             p[0] = {'type': 'error', 'name': var_name, 'basetype': 'unknown'}
             return
         
+# Definição das funções do programa
 def p_functions(p):
     """functions : function functions
                  | empty"""
     p[0] = ""
 
+# Definição de uma função
 def p_function(p):
     """function : FUNCTION ID LPAREN param_list RPAREN COLON type SEMI declarations BEGIN statements END SEMI"""
     name = p[2]
@@ -188,26 +206,30 @@ def p_function(p):
     parser_params[name] = param_code.count("STOREL")
     p[0] = ""
 
+# Definição da lista de parâmetros da função
 def p_param_list_single(p):
     "param_list : ID COLON type"
     p[0] = "storel 0\n" 
 
+# Definição da lista de parâmetros com múltiplos parâmetros
 def p_param_list_multiple(p):
     "param_list : param_list SEMI ID COLON type"
     idx = p[1].count("storel") 
     p[0] = p[1] + f"storel {idx}\n" 
 
+# Definição da lista de argumentos para chamadas de função
 def p_argument_list_single(p):
     "argument_list : expression"
     expr_val = p[1]
     p[0] = expr_val[0] if isinstance(expr_val, tuple) else expr_val 
 
+# Definição da lista de argumentos com múltiplos argumentos
 def p_argument_list_multiple(p):
     "argument_list : argument_list COMMA expression"
     new_expr_code = p[3][0] if isinstance(p[3], tuple) else p[3]
     p[0] = p[1] + new_expr_code
 
-
+# Definição da chamada de função
 def p_expression_function_call(p):
     """expression : ID LPAREN argument_list RPAREN
                   | ID LPAREN RPAREN""" 
@@ -236,10 +258,12 @@ def p_expression_function_call(p):
         
         p[0] = (args_code + f"pusha {fname}\ncall\n", "integer")
 
+# Definição das instruções do programa
 def p_statements(p):
     """statements : statement_sequence""" 
     p[0] = "".join(p[1]) 
 
+# Definição da sequência de instruções
 def p_statement_sequence(p):
     """statement_sequence : statement
                           | statement_sequence SEMI statement"""
@@ -255,6 +279,7 @@ def p_statement_sequence(p):
         else: 
             p[0] = p[1]
 
+# Definição da instrução
 def p_statement(p):
     """statement : assignment_statement
                  | writeln_statement
@@ -267,10 +292,12 @@ def p_statement(p):
                  | concrete_empty_statement""" 
     p[0] = p[1]
 
+# Definição de uma instrução vazia (usada para compatibilidade com gramáticas)
 def p_concrete_empty_statement(p):
     'concrete_empty_statement :'
     p[0] = "" 
 
+# Definição da instrução de atribuição
 def p_assignment_statement(p):
     """assignment_statement : variable ASSIGN expression"""
     global parser_success, parser_var, parser_var_types
@@ -312,19 +339,23 @@ def p_assignment_statement(p):
     else:
         p[0] = ""
 
+# Definição das instruções de escrita
 def p_writeln_statement(p):
     """writeln_statement : WRITELN LPAREN writelist RPAREN""" 
     p[0] = p[3] + "writeln\n" 
 
+# Definição da lista de itens a escrever
 def p_write_statement(p):
     """write_statement : WRITE LPAREN writelist RPAREN""" 
     p[0] = p[3]
 
+# Definição da lista de itens a escrever
 def p_writelist(p):
     """writelist : writelist COMMA writeitem
                  | writeitem"""
     p[0] = p[1] + p[3] if len(p) == 4 else p[1]
 
+# Definição do item a escrever
 def p_writeitem_expr(p):
     """writeitem : expression"""
     code, expr_type = p[1]
@@ -340,6 +371,7 @@ def p_writeitem_expr(p):
         print(f"Aviso: Tipo de expressão desconhecido '{expr_type}' em p_writeitem_expr. Usando writei por defeito.")
         p[0] = code + "writei\n" 
 
+# Definição do item a escrever como variável
 def p_readln_statement(p):
     """readln_statement : READLN LPAREN variable RPAREN"""
     global parser_success, parser_var, parser_var_types 
@@ -399,6 +431,7 @@ def p_readln_statement(p):
         parser_success = False
         p[0] = ""
 
+# Definição da instrução FOR
 def p_for_statement(p):
     """for_statement : FOR ID ASSIGN expression TO expression DO statement
                      | FOR ID ASSIGN expression DOWNTO expression DO statement""" 
@@ -461,11 +494,13 @@ def p_for_statement(p):
         f"{end_label}:\n"                          
     )
 
+# Definição da expressão booleana
 def p_expression_boolean(p):
     """expression : TRUE
                   | FALSE"""
     p[0] = (f"pushi {1 if p[1].lower() == 'true' else 0}\n", "boolean") 
 
+# Definição da expressão lógica
 def p_expression_logical(p):
     """expression : expression AND expression
                   | expression OR expression"""
@@ -474,6 +509,7 @@ def p_expression_logical(p):
     right_code, _ = p[3] 
     p[0] = (left_code + right_code + op_code + "\n", "boolean")
 
+# Definição da negação lógica
 def p_expression_relop(p):
     """expression : expression LT expression
                   | expression LE expression
@@ -556,27 +592,31 @@ def p_expression_relop(p):
     final_code_parts.append(op_instruction + "\n")
     p[0] = ("".join(final_code_parts), result_type)
 
-
+# Definição da expressão parênteses
 def p_expression_paren(p):
     """expression : LPAREN expression RPAREN"""
     p[0] = p[2]
 
+# Definição da expressão de divisão
 def p_expression_div(p): 
     """expression : expression DIV expression""" 
     left_code, left_type = p[1] 
     right_code, right_type = p[3]
     p[0] = (left_code + right_code + "div\n", "integer")
 
+# Definição da expressão de módulo
 def p_expression_mod(p):
     """expression : expression MOD expression"""
     left_code, _ = p[1] 
     right_code, _ = p[3] 
     p[0] = (left_code + right_code + "mod\n", "integer")
 
+# Definição da instrução composta
 def p_statement_compound(p):
     """statement_compound : BEGIN statements END"""
     p[0] = p[2] 
 
+# Definição da instrução if
 def p_if_statement(p):
     """if_statement : IF expression THEN statement %prec IFX
                     | IF expression THEN statement ELSE statement"""
@@ -607,6 +647,7 @@ def p_if_statement(p):
             f"{label_end}:\n"   
         )
 
+# Definição da instrução while
 def p_while_statement(p):
     """while_statement : WHILE expression DO statement"""
     cond_code, _ = p[2] 
@@ -625,6 +666,7 @@ def p_while_statement(p):
         f"{end_label}:\n"          
     )
 
+# Definição da expressão binária
 def p_expression_binop(p):
     """expression : expression PLUS expression
                   | expression MINUS expression
@@ -664,6 +706,7 @@ def p_expression_binop(p):
 
     p[0] = (final_left_code + final_right_code + op_code + "\n", result_type)
 
+# Definição da expressão a partir de uma variável
 def p_expression_from_variable(p):
     """expression : variable"""
     var_info = p[1]
@@ -721,15 +764,18 @@ def p_expression_from_variable(p):
         parser_success = False
         p[0] = ("", "integer")
 
+# Definição da expressão a partir de uma string 
 def p_expression_from_literal_string(p):
     """expression : STRING_LITERAL"""
     val = p[1]
     p[0] = (f"pushs \"{val}\"\n", "string")
 
+# Definição da expressão a partir de um número 
 def p_expression_number(p): 
     "expression : NUMBER"
     p[0] = (f"pushi {str(p[1])}\n", "integer")
 
+# Definição da expressão a partir de um número real
 def p_expression_real(p): 
     "expression : REAL"
     p[0] = (f"pushf {str(p[1])}\n", "real")
@@ -746,8 +792,10 @@ def p_error(p):
     global parser_success
     parser_success = False
 
+# ====== Criação do parser ======
 parser = yacc.yacc(debug=True)
 
+# ====== Função principal para executar o parser ======
 if __name__ == "__main__":
     input_filename = 'inputs/input4.txt'
     if len(sys.argv) > 1:
